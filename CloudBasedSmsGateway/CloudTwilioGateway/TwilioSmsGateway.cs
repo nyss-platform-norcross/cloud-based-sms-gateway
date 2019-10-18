@@ -23,10 +23,10 @@ namespace CloudTwilioGateway
     public static class TwilioSmsGateway
     {
         private static ILogger _log;
-        private static HttpClient httpClient;
-        private static string twilioSid;
-        private static string twilioToken;
-        private static string apiUrl;
+        private static HttpClient _httpClient;
+        private static string _twilioSid;
+        private static string _twilioToken;
+        private static string _apiUrl;
         [FunctionName("Twilio")]
         public static async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
@@ -38,16 +38,16 @@ namespace CloudTwilioGateway
                 .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables()
                 .Build();
-            twilioSid = config.GetValue<string>("TwilioSid");
-            twilioToken = config.GetValue<string>("TwilioToken");
-            apiUrl = config.GetValue<string>("ApiUrl");
-            StreamReader streamReader = new StreamReader(req.Body);
-            string requestBody = await streamReader.ReadToEndAsync();
+            _twilioSid = config.GetValue<string>("TwilioSid");
+            _twilioToken = config.GetValue<string>("TwilioToken");
+            _apiUrl = config.GetValue<string>("ApiUrl");
+            var streamReader = new StreamReader(req.Body);
+            var requestBody = await streamReader.ReadToEndAsync();
             streamReader.Dispose();
-            string from = HttpUtility.ParseQueryString(requestBody).Get("From");
-            string to = HttpUtility.ParseQueryString(requestBody).Get("To");
-            string body = HttpUtility.ParseQueryString(requestBody).Get("Body");
-            string messageSid = HttpUtility.ParseQueryString(requestBody).Get("messageSid");
+            var from = HttpUtility.ParseQueryString(requestBody).Get("From");
+            var to = HttpUtility.ParseQueryString(requestBody).Get("To");
+            var body = HttpUtility.ParseQueryString(requestBody).Get("Body");
+            var messageSid = HttpUtility.ParseQueryString(requestBody).Get("messageSid");
             _log.LogInformation("NEW SMS - FROM:{0} - TO:{1} - MESSAGESID:{2}", from, to, messageSid);
             var sms = CreateSmsFormat(from, body, messageSid);
             if (sms == null)
@@ -56,14 +56,12 @@ namespace CloudTwilioGateway
             if (!res)
                 return new OkObjectResult(ResponseFactory(3));
             var responseAPi = await SendSmsToApiAsync(sms);
-            if (responseAPi.Equals(""))
-                return new OkObjectResult(ResponseFactory(2));
-            return new OkObjectResult(responseAPi);
+            return responseAPi.Equals("") ? new OkObjectResult(ResponseFactory(2)) : new OkObjectResult(responseAPi);
         }
         private static Sms CreateSmsFormat(string from, string body, string msgId)
         {
             Sms newSms = null;
-            var patternNumber = @"^[+]*[(]{0,1}[0-9]{1,4}[)]{0,1}[-\s\./0-9]*$";
+            const string patternNumber = @"^[+]*[(]{0,1}[0-9]{1,4}[)]{0,1}[-\s\./0-9]*$";
             if (Regex.IsMatch(from, patternNumber))
             {
                 newSms = new Sms
@@ -83,12 +81,12 @@ namespace CloudTwilioGateway
         }
         private static async Task<string> SendSmsToApiAsync(Sms sms)
         {
-            if (httpClient == null)
-                httpClient = new HttpClient();
+            if (_httpClient == null)
+                _httpClient = new HttpClient();
             try
             {
                 var httpContent = new StringContent(JsonConvert.SerializeObject(sms), Encoding.UTF8, "application/json");
-                var res = await httpClient.PostAsync( apiUrl + "/api/SmsGateway/", httpContent);
+                var res = await _httpClient.PostAsync(_apiUrl + "/api/SmsGateway/", httpContent);
                 if (res.IsSuccessStatusCode)
                 {
                     _log.LogInformation("SENDED SMS SUCCESFULL TO THE API - MESSAGESID:{0}", sms.MsgId);
@@ -110,7 +108,7 @@ namespace CloudTwilioGateway
             ResourceSet<MessageResource> messages;
             try
             {
-                TwilioClient.Init(twilioSid, twilioToken);
+                TwilioClient.Init(_twilioSid, _twilioToken);
                 messages = MessageResource.Read(
                     from: new Twilio.Types.PhoneNumber(sms.Sender),
                     to: new Twilio.Types.PhoneNumber(to)
@@ -138,15 +136,15 @@ namespace CloudTwilioGateway
             switch (number)
             {
                 case 0:
-                    return "We received your message and we will analyse it as soon as it possible";
+                    return "We received your message and we will analysis it as soon as it possible";
                 case 1:
                     return "Sorry, there is a problem inside your sms. Please verify the syntax of it";
                 case 2:
-                    return "Sorry there is a probem during the traitment of your data. Please try again.";
+                    return "Sorry there is a problem during the treatment of your data. Please try again.";
                 case 3:
                     return "It seems that your SMS is not from the correct provider.";
                 default:
-                    return "We received your message and we will analyse it as soon as it possible";
+                    return "We received your message and we will analysis it as soon as it possible";
             }
         }
     }
