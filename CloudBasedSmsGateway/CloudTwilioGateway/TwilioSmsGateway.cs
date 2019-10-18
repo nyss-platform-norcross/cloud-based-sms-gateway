@@ -1,3 +1,4 @@
+using CloudTwilioGateway.Models.Api;
 using CloudTwilioGateway.Models.SmsModel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -13,6 +14,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
+using Twilio;
+using Twilio.Base;
+using Twilio.Rest.Api.V2010.Account;
 
 namespace CloudTwilioGateway
 {
@@ -20,6 +24,8 @@ namespace CloudTwilioGateway
     {
         private static ILogger _log;
         private static HttpClient httpClient;
+        private static string TwilioSid;
+        private static string TwilioToken;
         [FunctionName("Twilio")]
         public static async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
@@ -31,7 +37,8 @@ namespace CloudTwilioGateway
                 .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables()
                 .Build();
-            _log.LogInformation("C# HTTP trigger function processed a request.");
+            TwilioSid = config.GetValue<string>("TwilioSid");
+            TwilioToken = config.GetValue<string>("TwilioToken");
             StreamReader streamReader = new StreamReader(req.Body);
             string requestBody = await streamReader.ReadToEndAsync();
             streamReader.Dispose();
@@ -43,12 +50,13 @@ namespace CloudTwilioGateway
             var sms = CreateSmsFormat(from, body, messageSid);
             if (sms == null)
                 return new OkObjectResult(ResponseFactory(1));
+            var res = VerifySms(sms, to);
+            if (!res)
+                return new OkObjectResult(ResponseFactory(3));
             var responseAPi = await SendSmsToApiAsync(sms);
-            if (!responseAPi)
-            {
+            if (responseAPi.Equals(""))
                 return new OkObjectResult(ResponseFactory(2));
-            }
-            return new OkObjectResult(ResponseFactory(0));
+            return new OkObjectResult(responseAPi);
         }
         private static Sms CreateSmsFormat(string from, string body, string msgId)
         {
@@ -71,7 +79,7 @@ namespace CloudTwilioGateway
                 _log.LogWarning("PROBLEM WITH PHONE NUMBER OF SMS ID:{0}", msgId);
             return newSms;
         }
-        private static async Task<bool> SendSmsToApiAsync(Sms sms)
+        private static async Task<string> SendSmsToApiAsync(Sms sms)
         {
             if (httpClient == null)
                 httpClient = new HttpClient();
@@ -82,16 +90,46 @@ namespace CloudTwilioGateway
                 if (res.IsSuccessStatusCode)
                 {
                     _log.LogInformation("SENDED SMS SUCCESFULL TO THE API - MESSAGESID:{0}", sms.MsgId);
-                    return true;
+                    var resultString = await res.Content.ReadAsStringAsync();
+                    var answer = JsonConvert.DeserializeObject<Answer>(resultString);
+                    return answer.FeedbackMessage;
                 }
                 _log.LogError("SENDED SMS NOT SUCCESFULL TO THE API - MESSAGESID:{0}", sms.MsgId);
-                return false;
+                return "";
             }
             catch (HttpRequestException e)
             {
                 _log.LogError("ERROR WHILE SENDING SMS TO THE API - MESSAGESID:{0} - ERROR:{1}", sms.MsgId, e.Message);
+                return "";
+            }
+        }
+        private static bool VerifySms(Sms sms, string to)
+        {
+            ResourceSet<MessageResource> messages;
+            try
+            {
+                TwilioClient.Init(TwilioSid, TwilioToken);
+                messages = MessageResource.Read(
+                    from: new Twilio.Types.PhoneNumber(sms.Sender),
+                    to: new Twilio.Types.PhoneNumber(to)
+                );
+
+            }
+            catch (Exception e)
+            {
+                _log.LogError("ERROR WHILE FETCHING DATA FROM TWILIO - ERROR:{0}", e.Message);
                 return false;
             }
+            foreach (var record in messages)
+            {
+                if (record.Sid == sms.MsgId && record.Body == sms.Text)
+                {
+                    _log.LogInformation("SMS FOUND INSIDE TWILIO DATABASE - MESSAGESID:{0}", sms.MsgId);
+                    return true;
+                }
+            }
+            _log.LogWarning("SMS NOT FOUND INSIDE TWILIO DATABASE - MESSAGESID:{0}", sms.MsgId);
+            return false;
         }
         private static string ResponseFactory(int number)
         {
@@ -102,7 +140,9 @@ namespace CloudTwilioGateway
                 case 1:
                     return "Sorry, there is a problem inside your sms. Please verify the syntax of it";
                 case 2:
-                    return "Sorry there is a probem during the traitment of your data. Please retry later.";
+                    return "Sorry there is a probem during the traitment of your data. Please try again.";
+                case 3:
+                    return "It seems that your SMS is not from the correct provider.";
                 default:
                     return "We received your message and we will analyse it as soon as it possible";
             }
