@@ -24,8 +24,9 @@ namespace CloudTwilioGateway
     {
         private static ILogger _log;
         private static HttpClient httpClient;
-        private static string TwilioSid;
-        private static string TwilioToken;
+        private static string twilioSid;
+        private static string twilioToken;
+        private static string apiUrl;
         [FunctionName("Twilio")]
         public static async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
@@ -37,8 +38,9 @@ namespace CloudTwilioGateway
                 .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables()
                 .Build();
-            TwilioSid = config.GetValue<string>("TwilioSid");
-            TwilioToken = config.GetValue<string>("TwilioToken");
+            twilioSid = config.GetValue<string>("TwilioSid");
+            twilioToken = config.GetValue<string>("TwilioToken");
+            apiUrl = config.GetValue<string>("ApiUrl");
             StreamReader streamReader = new StreamReader(req.Body);
             string requestBody = await streamReader.ReadToEndAsync();
             streamReader.Dispose();
@@ -86,7 +88,7 @@ namespace CloudTwilioGateway
             try
             {
                 var httpContent = new StringContent(JsonConvert.SerializeObject(sms), Encoding.UTF8, "application/json");
-                var res = await httpClient.PostAsync("http://ccce053a.ngrok.io/api/SmsGateway/", httpContent);
+                var res = await httpClient.PostAsync( apiUrl + "/api/SmsGateway/", httpContent);
                 if (res.IsSuccessStatusCode)
                 {
                     _log.LogInformation("SENDED SMS SUCCESFULL TO THE API - MESSAGESID:{0}", sms.MsgId);
@@ -108,7 +110,7 @@ namespace CloudTwilioGateway
             ResourceSet<MessageResource> messages;
             try
             {
-                TwilioClient.Init(TwilioSid, TwilioToken);
+                TwilioClient.Init(twilioSid, twilioToken);
                 messages = MessageResource.Read(
                     from: new Twilio.Types.PhoneNumber(sms.Sender),
                     to: new Twilio.Types.PhoneNumber(to)
