@@ -15,7 +15,6 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
 using Twilio;
-using Twilio.Base;
 using Twilio.Rest.Api.V2010.Account;
 
 namespace CloudTwilioGateway
@@ -75,7 +74,7 @@ namespace CloudTwilioGateway
                     MsgId = msgId,
                     ApiKey = _apiKey
                 };
-                _log.LogInformation("SMS FORMATED - MESSAGESID:{0}", newSms.MsgId);
+                _log.LogInformation("SMS FORMATTED - MESSAGESID:{0}", newSms.MsgId);
             }
             else
                 _log.LogWarning("PROBLEM WITH PHONE NUMBER OF SMS ID:{0}", msgId);
@@ -91,12 +90,12 @@ namespace CloudTwilioGateway
                 var res = await _httpClient.PostAsync(_apiUrl + "/api/SmsGateway/", httpContent);
                 if (res.IsSuccessStatusCode)
                 {
-                    _log.LogInformation("SENDED SMS SUCCESFULL TO THE API - MESSAGESID:{0}", sms.MsgId);
+                    _log.LogInformation("SMS SUCCESSFULLY SENT TO THE API - MESSAGESID:{0}", sms.MsgId);
                     var resultString = await res.Content.ReadAsStringAsync();
                     var answer = JsonConvert.DeserializeObject<Answer>(resultString);
                     return answer.FeedbackMessage;
                 }
-                _log.LogError("SENDED SMS NOT SUCCESFULL TO THE API - MESSAGESID:{0}", sms.MsgId);
+                _log.LogError("SMS NOT SUCCESSFULLY SENT TO THE API - MESSAGESID:{0}", sms.MsgId);
                 return "";
             }
             catch (HttpRequestException e)
@@ -118,7 +117,7 @@ namespace CloudTwilioGateway
                 _log.LogError("ERROR WHILE FETCHING DATA FROM TWILIO - ERROR:{0}", e.Message);
                 return false;
             }
-            if ( message != null && message.Sid == sms.MsgId && message.Body == sms.Text && message.To == to && message.From.ToString() == sms.Sender)
+            if (message != null && message.Sid == sms.MsgId && message.Body == sms.Text && message.To == to && message.From.ToString() == sms.Sender)
             {
                 _log.LogInformation("SMS FOUND INSIDE TWILIO DATABASE - MESSAGESID:{0}", sms.MsgId);
                 return true;
